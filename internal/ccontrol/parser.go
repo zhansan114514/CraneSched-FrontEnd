@@ -48,12 +48,12 @@ type Argument struct {
 }
 
 var CControlLexer = lexer.MustSimple([]lexer.SimpleRule{
-	{"whitespace", `\s+`},
-	{"String", `"[^"]*"|'[^']*'`},
-	{"TimeFormat", `\d+:\d+:\d+|\d+-\d+:\d+:\d+`},
-	{"Number", `[-+]?\d+(\.\d+)?`},
-	{"Ident", `[a-zA-Z][a-zA-Z0-9_\-\.]*`},
-	{"Punct", `[-=,:]`},
+	{Name: "whitespace", Pattern: `\s+`},
+	{Name: "String", Pattern: `"[^"]*"|'[^']*'`},
+	{Name: "TimeFormat", Pattern: `\d+:\d+:\d+|\d+-\d+:\d+:\d+`},
+	{Name: "Number", Pattern: `[-+]?\d+(\.\d+)?`},
+	{Name: "Ident", Pattern: `[a-zA-Z][a-zA-Z0-9_\-\.,]*`},
+	{Name: "Punct", Pattern: `[-=,:]`},
 })
 
 var CControlParser = participle.MustBuild[CControlCommand](

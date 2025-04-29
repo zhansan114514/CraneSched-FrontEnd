@@ -395,6 +395,10 @@ func executeCreateCommand(command *CControlCommand) int {
 	switch resource {
 	case "reservation":
 		return executeCreateReservationCommand(command)
+	case "job":
+		return executeCreateJobCommand(command)
+	case "partition":
+		return executeCreatePartitionCommand(command)
 	default:
 		log.Debugf("unknown resource type: %s", resource)
 		return util.ErrorCmdArg
@@ -448,6 +452,16 @@ func executeCreateReservationCommand(command *CControlCommand) int {
 	return util.ErrorSuccess
 }
 
+// executeCreateJobCommand
+func executeCreateJobCommand(command *CControlCommand) int {
+	return util.ErrorSuccess
+}
+
+// executeCreatePartitionCommand
+func executeCreatePartitionCommand(command *CControlCommand) int {
+	return util.ErrorSuccess
+}
+
 // executeDeleteCommand
 func executeDeleteCommand(command *CControlCommand) int {
 	resource := command.GetResource()
@@ -455,6 +469,10 @@ func executeDeleteCommand(command *CControlCommand) int {
 	switch resource {
 	case "reservation":
 		return executeDeleteReservationCommand(command)
+	case "job":
+		return executeDeleteJobCommand(command)
+	case "partition":
+		return executeDeletePartitionCommand(command)
 	default:
 		log.Debugf("unknown resource type: %s", resource)
 		return util.ErrorCmdArg
@@ -473,5 +491,15 @@ func executeDeleteReservationCommand(command *CControlCommand) int {
 		return util.ErrorCmdArg
 	}
 
+	return util.ErrorSuccess
+}
+
+// executeDeleteJobCommand
+func executeDeleteJobCommand(command *CControlCommand) int {
+	return util.ErrorSuccess
+}
+
+// executeDeletePartitionCommand
+func executeDeletePartitionCommand(command *CControlCommand) int {
 	return util.ErrorSuccess
 }
