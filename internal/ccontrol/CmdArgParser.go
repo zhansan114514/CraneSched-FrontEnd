@@ -20,7 +20,6 @@ package ccontrol
 
 import (
 	"CraneFrontEnd/internal/util"
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -51,54 +50,30 @@ var (
 	FlagUser            string
 )
 
-// ParseCmdArgs
 func ParseCmdArgs(args []string) {
 	cmdStr := strings.Join(args[1:], " ")
 	command, err := ParseCControlCommand(cmdStr)
-
-	_, hasHelp, _ := getGlobalFlag(command, "help", "h")
-	if err != nil || hasHelp {
-		if handleHelp(command, err) {
-			return
-		}
-	}
-
-	if command.GetAction() != "" && strings.Contains(command.GetAction(), "completion") {
-		fmt.Println("Command completion feature is not supported")
-		os.Exit(1)
-		return
+	if err != nil {
+		log.Debugf("invalid command format: %s", err)
+		log.Error("error: command format is incorrect")
+		showHelp()
+		os.Exit(util.ErrorCmdArg)
 	}
 
 	processGlobalFlags(command)
-
-	if !command.IsValid() {
-		log.Debug("invalid command format")
-		fmt.Printf("error: command format is incorrect\n\n")
-		showHelp()
-		os.Exit(util.ErrorCmdArg)
-		return
-	}
 
 	result := executeCommand(command)
 	if result != util.ErrorSuccess {
 		switch result {
 		case util.ErrorCmdArg:
-			fmt.Printf("error: command argument error\n\n")
-			if command.GetAction() != "" && command.GetResource() != "" {
-				showSubCommandHelp(command.GetAction(), command.GetResource())
-			} else if command.GetAction() != "" {
-				showCommandHelp(command.GetAction())
-			} else {
-				showHelp()
-			}
+			log.Error("error: command argument error")
+			os.Exit(result)
 		default:
-			fmt.Printf("error: command execution failed (error code: %d)\n", result)
+			log.Errorf("error: command execution failed (error code: %d)", result)
 		}
-		os.Exit(result)
 	}
 }
 
-// executeCommand
 func executeCommand(command *CControlCommand) int {
 	config := util.ParseConfig(FlagConfigFilePath)
 	stub = util.GetStubToCtldByConfig(config)
@@ -125,7 +100,6 @@ func executeCommand(command *CControlCommand) int {
 	}
 }
 
-// executeShowCommand
 func executeShowCommand(command *CControlCommand) int {
 	resource := command.GetResource()
 
@@ -136,8 +110,6 @@ func executeShowCommand(command *CControlCommand) int {
 		return executeShowPartitionCommand(command)
 	case "job":
 		return executeShowJobCommand(command)
-	case "config":
-		return executeShowConfigCommand()
 	case "reservation":
 		return executeShowReservationCommand(command)
 	default:
@@ -146,83 +118,50 @@ func executeShowCommand(command *CControlCommand) int {
 	}
 }
 
-// executeShowNodeCommand
 func executeShowNodeCommand(command *CControlCommand) int {
-	nodeName, hasNodeName := command.GetFirstArg()
-	if hasNodeName {
-		FlagNodeName = nodeName
-		FlagQueryAll = false
-	} else {
-		FlagNodeName = ""
-		FlagQueryAll = true
-	}
+	arg, hasArg := command.GetArg()
+	FlagQueryAll = !hasArg
 
-	if err := ShowNodes(FlagNodeName, FlagQueryAll); err != util.ErrorSuccess {
+	if err := ShowNodes(arg, FlagQueryAll); err != util.ErrorSuccess {
 		return util.ErrorCmdArg
 	}
 
 	return util.ErrorSuccess
 }
 
-// executeShowPartitionCommand
 func executeShowPartitionCommand(command *CControlCommand) int {
-	partitionName, hasPartitionName := command.GetFirstArg()
-	if hasPartitionName {
-		FlagPartitionName = partitionName
-		FlagQueryAll = false
-	} else {
-		FlagPartitionName = ""
-		FlagQueryAll = true
-	}
+	arg, hasArg := command.GetArg()
+	FlagQueryAll = !hasArg
 
-	if err := ShowPartitions(FlagPartitionName, FlagQueryAll); err != util.ErrorSuccess {
+	if err := ShowPartitions(arg, FlagQueryAll); err != util.ErrorSuccess {
 		return util.ErrorCmdArg
 	}
 
 	return util.ErrorSuccess
 }
 
-// executeShowJobCommand
 func executeShowJobCommand(command *CControlCommand) int {
-	jobIds, hasJobIds := command.GetFirstArg()
-	if hasJobIds {
-		FlagQueryAll = false
-	} else {
-		FlagQueryAll = true
-	}
+	arg, hasArg := command.GetArg()
+	FlagQueryAll = !hasArg
 
-	if err := ShowJobs(jobIds, FlagQueryAll); err != util.ErrorSuccess {
+	if err := ShowJobs(arg, FlagQueryAll); err != util.ErrorSuccess {
 		return util.ErrorCmdArg
 	}
 
 	return util.ErrorSuccess
 }
 
-// executeShowConfigCommand
-func executeShowConfigCommand() int {
-
-	return ShowConfig(FlagConfigFilePath)
-}
-
-// executeShowReservationCommand
 func executeShowReservationCommand(command *CControlCommand) int {
-	reservationName, hasReservationName := command.GetFirstArg()
-	if hasReservationName {
-		FlagReservationName = reservationName
-		FlagQueryAll = false
-	} else {
-		FlagReservationName = ""
-		FlagQueryAll = true
-	}
+	arg, hasArg := command.GetArg()
+	FlagQueryAll = !hasArg
 
-	if err := ShowReservations(FlagReservationName, FlagQueryAll); err != util.ErrorSuccess {
-		os.Exit(err)
+	if err := ShowReservations(arg, FlagQueryAll); err != util.ErrorSuccess {
+		return util.ErrorCmdArg
 	}
 
 	return util.ErrorSuccess
 }
 
-// executeUpdateCommand
 func executeUpdateCommand(command *CControlCommand) int {
 	resource := command.GetResource()
 
@@ -239,35 +178,25 @@ func executeUpdateCommand(command *CControlCommand) int {
 	}
 }
 
-// executeUpdateNodeCommand
 func executeUpdateNodeCommand(command *CControlCommand) int {
+	kvParams := command.GetKVMaps()
+	if len(kvParams) == 0 {
+		log.Debug("no attribute to be modified")
+		return util.ErrorCmdArg
+	}
 
-	nodeName, hasNodeName := command.GetFirstArg()
-	if hasNodeName {
-		FlagNodeName = nodeName
-	} else {
-		nameFlag, hasName, _ := getGlobalFlag(command, "name", "n")
-		if hasName {
-			FlagNodeName = nameFlag
+	for key, value := range kvParams {
+		switch strings.ToLower(key) {
+		case "name":
+			FlagNodeName = value
+		case "state":
+			FlagState = value
+		case "reason":
+			FlagReason = value
+		default:
+			log.Errorf("unknown attribute to modify: %s", key)
+			return util.ErrorCmdArg
 		}
-	}
-
-	if FlagNodeName == "" {
-		log.Debug("no node name specified")
-		return util.ErrorCmdArg
-	}
-
-	stateFlag, hasState, _ := getGlobalFlag(command, "state", "t")
-	reasonFlag, hasReason, _ := getGlobalFlag(command, "reason", "r")
-
-	if !hasState {
-		log.Debug("no state specified")
-		return util.ErrorCmdArg
-	}
-
-	FlagState = stateFlag
-	if hasReason {
-		FlagReason = reasonFlag
 	}
 
 	if err := ChangeNodeState(FlagNodeName, FlagState, FlagReason); err != util.ErrorSuccess {
@@ -277,94 +206,82 @@ func executeUpdateNodeCommand(command *CControlCommand) int {
 	return util.ErrorSuccess
 }
 
-// executeUpdateJobCommand
 func executeUpdateJobCommand(command *CControlCommand) int {
-
-	jobFlagLong, hasJobLong, _ := getGlobalFlag(command, "job", "J")
-	if hasJobLong && jobFlagLong != "" {
-		FlagTaskIds = jobFlagLong
-	}
-
-	if FlagTaskIds == "" {
-		log.Debug("no job id specified")
+	kvParams := command.GetKVMaps()
+	if len(kvParams) == 0 {
+		log.Debug("no attribute to be modified")
 		return util.ErrorCmdArg
 	}
 
-	timeLimitFlag, hasTimeLimit, _ := getGlobalFlag(command, "time-limit", "T")
-	priorityFlag, hasPriority, _ := getGlobalFlag(command, "priority", "P")
+	for key, value := range kvParams {
+		switch strings.ToLower(key) {
+		case "priority":
+			priority, err := strconv.ParseFloat(value, 64)
+			if err != nil {
+				log.Debugf("invalid priority value: %s", value)
+				return util.ErrorCmdArg
+			}
+			FlagPriority = priority
+		case "timelimit":
+			FlagTimeLimit = value
+		case "name":
+			FlagTaskIds = value
+		default:
+			log.Errorf("unknown attribute to modify: %s", key)
+			return util.ErrorCmdArg
+		}
+	}
 
-	if !hasTimeLimit && !hasPriority {
-		log.Debug("there is no attribute to be modified")
+	if err := ChangeTaskPriority(FlagTaskIds, FlagPriority); err != util.ErrorSuccess {
 		return util.ErrorCmdArg
-	}
-
-	if hasTimeLimit {
-		FlagTimeLimit = timeLimitFlag
-		if err := ChangeTaskTimeLimit(FlagTaskIds, FlagTimeLimit); err != util.ErrorSuccess {
-			return util.ErrorCmdArg
-		}
-	}
-
-	if hasPriority {
-		priority, err := strconv.ParseFloat(priorityFlag, 64)
-		if err != nil {
-			log.Debugf("invalid priority value: %s", priorityFlag)
-			return util.ErrorCmdArg
-		}
-		FlagPriority = priority
-		if err := ChangeTaskPriority(FlagTaskIds, FlagPriority); err != util.ErrorSuccess {
-			return util.ErrorCmdArg
-		}
 	}
 
 	return util.ErrorSuccess
 }
 
-// executeUpdatePartitionCommand
 func executeUpdatePartitionCommand(command *CControlCommand) int {
-
-	partitionName, hasPartitionName := command.GetFirstArg()
-	if !hasPartitionName {
-		log.Debug("no partition name specified")
+	kvParams := command.GetKVMaps()
+	if len(kvParams) == 0 {
+		log.Debug("no attribute to be modified")
 		return util.ErrorCmdArg
 	}
 
-	allowedAccounts, hasAllowedAccounts, _ := getGlobalFlag(command, "allowed-accounts", "A")
-	deniedAccounts, hasDeniedAccounts, _ := getGlobalFlag(command, "denied-accounts", "D")
+	for key, value := range kvParams {
+		switch strings.ToLower(key) {
+		case "allowed-accounts":
+			FlagAllowedAccounts = value
+		case "denied-accounts":
+			FlagDeniedAccounts = value
+		default:
+			log.Errorf("unknown attribute to modify: %s", key)
+			return util.ErrorCmdArg
+		}
+	}
 
-	if hasAllowedAccounts {
-		FlagAllowedAccounts = allowedAccounts
-		if err := ModifyPartitionAcl(partitionName, true, FlagAllowedAccounts); err != util.ErrorSuccess {
-			return util.ErrorCmdArg
-		}
-	} else if hasDeniedAccounts {
-		FlagDeniedAccounts = deniedAccounts
-		if err := ModifyPartitionAcl(partitionName, false, FlagDeniedAccounts); err != util.ErrorSuccess {
-			return util.ErrorCmdArg
-		}
-		log.Warning("Hint: When using AllowedAccounts, DeniedAccounts will not take effect.")
-	} else {
-		log.Debug("has no allowed-accounts or denied-accounts")
+	if err := ModifyPartitionAcl(FlagPartitionName, false, FlagDeniedAccounts); err != util.ErrorSuccess {
 		return util.ErrorCmdArg
 	}
 
 	return util.ErrorSuccess
 }
 
-// executeHoldCommand
 func executeHoldCommand(command *CControlCommand) int {
+	jobIds, _ := command.GetArg()
 
-	jobIds := command.GetHoldOrReleaseID()
+	timeLimit, hasTimeLimit := command.GetKVParamValue("time-limit")
+	if !hasTimeLimit {
+		log.Debug("no time limit specified")
+		return util.ErrorCmdArg
+	}
+
+	FlagHoldTime = timeLimit
+
 	if jobIds == "" {
 		log.Debug("no job id specified")
 		return util.ErrorCmdArg
 	}
 
-	timeFlag, hasTime, _ := getGlobalFlag(command, "time-limit", "t")
-
-	if hasTime && timeFlag != "" {
-		FlagHoldTime = timeFlag
-	}
+	FlagHoldTime = timeLimit
 
 	if err := HoldReleaseJobs(jobIds, true); err != util.ErrorSuccess {
 		return util.ErrorCmdArg
@@ -373,9 +290,8 @@ func executeHoldCommand(command *CControlCommand) int {
 	return util.ErrorSuccess
 }
 
-// executeReleaseCommand
 func executeReleaseCommand(command *CControlCommand) int {
-	jobIds := command.GetHoldOrReleaseID()
+	jobIds, _ := command.GetArg()
 	if jobIds == "" {
 		log.Debug("no job id specified")
 		return util.ErrorCmdArg
@@ -388,61 +304,43 @@ func executeReleaseCommand(command *CControlCommand) int {
 	return util.ErrorSuccess
 }
 
-// executeCreateCommand
 func executeCreateCommand(command *CControlCommand) int {
 	resource := command.GetResource()
 
 	switch resource {
 	case "reservation":
 		return executeCreateReservationCommand(command)
-	case "job":
-		return executeCreateJobCommand(command)
-	case "partition":
-		return executeCreatePartitionCommand(command)
 	default:
 		log.Debugf("unknown resource type: %s", resource)
 		return util.ErrorCmdArg
 	}
 }
 
-// executeCreateReservationCommand
 func executeCreateReservationCommand(command *CControlCommand) int {
-	nameValue, hasName, _ := getGlobalFlag(command, "name", "N")
-	if !hasName || nameValue == "" {
-		log.Debug("no reservation name specified")
+	kvParams := command.GetKVMaps()
+	if len(kvParams) == 0 {
+		log.Debug("no attribute to be modified")
 		return util.ErrorCmdArg
 	}
-	FlagReservationName = nameValue
 
-	startValue, hasStart, _ := getGlobalFlag(command, "start-time", "S")
-	if !hasStart || startValue == "" {
-		log.Debug("no start time specified")
-		return util.ErrorCmdArg
-	}
-	FlagStartTime = startValue
-
-	durationValue, hasDuration, _ := getGlobalFlag(command, "duration", "D")
-	if !hasDuration || durationValue == "" {
-		log.Debug("no duration specified")
-		return util.ErrorCmdArg
-	}
-	FlagDuration = durationValue
-
-	nodesValue, hasNodes, _ := getGlobalFlag(command, "nodes", "n")
-	if !hasNodes || nodesValue == "" {
-		log.Debug("no nodes specified")
-		return util.ErrorCmdArg
-	}
-	FlagNodes = nodesValue
-
-	accountValue, hasAccount, _ := getGlobalFlag(command, "account", "A")
-	if hasAccount && accountValue != "" {
-		FlagAccount = accountValue
-	}
-
-	userValue, hasUser, _ := getGlobalFlag(command, "user", "u")
-	if hasUser && userValue != "" {
-		FlagUser = userValue
+	for key, value := range kvParams {
+		switch strings.ToLower(key) {
+		case "name":
+			FlagReservationName = value
+		case "start-time":
+			FlagStartTime = value
+		case "duration":
+			FlagDuration = value
+		case "nodes":
+			FlagNodes = value
+		case "account":
+			FlagAccount = value
+		case "user":
+			FlagUser = value
+		default:
+			log.Errorf("unknown attribute to modify: %s", key)
+			return util.ErrorCmdArg
+		}
 	}
 
 	if err := CreateReservation(); err != util.ErrorSuccess {
@@ -452,12 +350,10 @@ func executeCreateReservationCommand(command *CControlCommand) int {
 	return util.ErrorSuccess
 }
 
-// executeCreateJobCommand
 func executeCreateJobCommand(command *CControlCommand) int {
 	return util.ErrorSuccess
 }
 
-// executeCreatePartitionCommand
 func executeCreatePartitionCommand(command *CControlCommand) int {
 	return util.ErrorSuccess
 }
@@ -469,19 +365,15 @@ func executeDeleteCommand(command *CControlCommand) int {
 	switch resource {
 	case "reservation":
 		return executeDeleteReservationCommand(command)
-	case "job":
-		return executeDeleteJobCommand(command)
-	case "partition":
-		return executeDeletePartitionCommand(command)
 	default:
 		log.Debugf("unknown resource type: %s", resource)
 		return util.ErrorCmdArg
 	}
 }
 
-// executeDeleteReservationCommand
 func executeDeleteReservationCommand(command *CControlCommand) int {
-	reservationName, hasReservationName := command.GetFirstArg()
+	reservationName, hasReservationName := command.GetKVParamValue("name")
+
 	if !hasReservationName {
 		log.Debug("no reservation name specified")
 		return util.ErrorCmdArg
@@ -491,15 +383,5 @@ func executeDeleteReservationCommand(command *CControlCommand) int {
 		return util.ErrorCmdArg
 	}
 
-	return util.ErrorSuccess
-}
-
-// executeDeleteJobCommand
-func executeDeleteJobCommand(command *CControlCommand) int {
-	return util.ErrorSuccess
-}
-
-// executeDeletePartitionCommand
-func executeDeletePartitionCommand(command *CControlCommand) int {
 	return util.ErrorSuccess
 }

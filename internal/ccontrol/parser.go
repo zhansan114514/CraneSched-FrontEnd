@@ -2,7 +2,10 @@ package ccontrol
 
 import (
 	"fmt"
+	"os"
 	"strings"
+
+	"CraneFrontEnd/internal/util"
 
 	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer"
@@ -10,11 +13,17 @@ import (
 
 // CControlCommand
 type CControlCommand struct {
-	Action         *ActionType   `parser:"@@"`
-	Resource       *ResourceType `parser:"@@?"`
-	PrimaryFlags   []*Flag       `parser:"@@*"`
-	Args           []*Argument   `parser:"@@*"`
-	SecondaryFlags []*Flag       `parser:"@@*"`
+	Action     *ActionType      `parser:"@@"`
+	Resource   *ResourceType    `parser:"@@?"`
+	Arg        *Argument        `parser:"@@?"`
+	KVParams   []*KeyValueParam `parser:"@@*"`
+	GlobeFlags []*Flag          `parser:"@@*"`
+}
+
+// KeyValueParam
+type KeyValueParam struct {
+	Key   string `parser:"@Ident"`
+	Value string `parser:"( '=' (@String | @Ident | @TimeFormat | @Number) | (@String | @Ident | @TimeFormat | @Number) )?"`
 }
 
 // ActionType
@@ -32,7 +41,6 @@ type ResourceType struct {
 	Node        bool `parser:"@'node'"`
 	Partition   bool `parser:"| @'partition'"`
 	Job         bool `parser:"| @'job'"`
-	Config      bool `parser:"| @'config'"`
 	Reservation bool `parser:"| @'reservation'"`
 }
 
@@ -44,7 +52,7 @@ type Flag struct {
 
 // Argument
 type Argument struct {
-	Value string `parser:"@String | @Ident | @TimeFormat | @Number"`
+	Name string `parser:"( '=' (@String | @Ident | @TimeFormat | @Number) | (@String | @Ident | @TimeFormat | @Number) )?"`
 }
 
 var CControlLexer = lexer.MustSimple([]lexer.SimpleRule{
@@ -92,8 +100,6 @@ func (r ResourceType) String() string {
 		return "partition"
 	case r.Job:
 		return "job"
-	case r.Config:
-		return "config"
 	case r.Reservation:
 		return "reservation"
 	default:
@@ -117,80 +123,40 @@ func (c *CControlCommand) GetResource() string {
 	return c.Resource.String()
 }
 
-// GetPrimaryFlag
-func (c *CControlCommand) GetPrimaryFlag(name string) (string, bool) {
-	for _, flag := range c.PrimaryFlags {
-		if flag.Name == name {
-			return flag.Value, true
+// GetKVParamValue
+func (c *CControlCommand) GetKVParamValue(key string) (string, bool) {
+	for _, param := range c.KVParams {
+		if strings.EqualFold(param.Key, strings.ToLower(key)) {
+			return param.Value, true
 		}
 	}
 	return "", false
 }
 
-// GetSecondaryFlag
-func (c *CControlCommand) GetSecondaryFlag(name string) (string, bool) {
-	for _, flag := range c.SecondaryFlags {
-		if flag.Name == name {
+// GetKVMaps
+func (c *CControlCommand) GetKVMaps() map[string]string {
+	kvMap := make(map[string]string)
+	for _, param := range c.KVParams {
+		kvMap[param.Key] = param.Value
+	}
+	return kvMap
+}
+
+// GetArg
+func (c *CControlCommand) GetArg() (string, bool) {
+	if c.Arg == nil {
+		return "", false
+	}
+	return c.Arg.Name, true
+}
+
+func (c *CControlCommand) GetGlobalFlag(name string) (string, bool) {
+	for _, flag := range c.GlobeFlags {
+		if strings.EqualFold(flag.Name, name) {
 			return flag.Value, true
 		}
 	}
 	return "", false
-}
-
-// GetFlag (save for backward compatibility)
-func (c *CControlCommand) GetFlag(name string) (string, bool) {
-	return c.GetPrimaryFlag(name)
-}
-
-// GetFlag2 (save for backward compatibility)
-func (c *CControlCommand) GetFlag2(name string) (string, bool) {
-	return c.GetSecondaryFlag(name)
-}
-
-// GetArgs
-func (c *CControlCommand) GetArgs() []string {
-	var args []string
-	for _, arg := range c.Args {
-		args = append(args, arg.Value)
-	}
-	return args
-}
-
-// GetFirstArg
-func (c *CControlCommand) GetFirstArg() (string, bool) {
-	if len(c.Args) > 0 {
-		return c.Args[0].Value, true
-	}
-	return "", false
-}
-
-// IsHoldOrReleaseOperation
-func (c *CControlCommand) IsHoldOrReleaseOperation() bool {
-	if c.Action == nil {
-		return false
-	}
-	return c.Action.Hold || c.Action.Release
-}
-
-// GetHoldOrReleaseID
-func (c *CControlCommand) GetHoldOrReleaseID() string {
-	if len(c.Args) > 0 {
-		return c.Args[0].Value
-	}
-	return ""
-}
-
-// IsValid
-func (c *CControlCommand) IsValid() bool {
-	if c.Action == nil {
-		return false
-	}
-
-	if c.IsHoldOrReleaseOperation() {
-		return c.GetHoldOrReleaseID() != ""
-	}
-
-	return c.Resource != nil
 }
 
 func (c *CControlCommand) String() string {
@@ -204,7 +170,11 @@ func (c *CControlCommand) String() string {
 		parts = append(parts, c.Resource.String())
 	}
 
-	for _, flag := range c.PrimaryFlags {
+	if c.Arg != nil {
+		parts = append(parts, c.Arg.Name)
+	}
+
+	for _, flag := range c.GlobeFlags {
 		if flag.Value != "" {
 			parts = append(parts, fmt.Sprintf("--%s=%s", flag.Name, flag.Value))
 		} else {
@@ -212,51 +182,34 @@ func (c *CControlCommand) String() string {
 		}
 	}
 
-	for _, arg := range c.Args {
-		parts = append(parts, arg.Value)
-	}
-
-	for _, flag2 := range c.SecondaryFlags {
-		if flag2.Value != "" {
-			parts = append(parts, fmt.Sprintf("--%s=%s", flag2.Name, flag2.Value))
-		} else {
-			parts = append(parts, fmt.Sprintf("--%s", flag2.Name))
-		}
+	for _, kv := range c.KVParams {
+		parts = append(parts, fmt.Sprintf("%s=%s", kv.Key, kv.Value))
 	}
 
 	return strings.Join(parts, " ")
 }
 
-// getGlobalFlag
-func getGlobalFlag(command *CControlCommand, longName, shortName string) (string, bool, int) {
-	value, hasValue := command.GetPrimaryFlag(longName)
-	if !hasValue && shortName != "" {
-		value, hasValue = command.GetPrimaryFlag(shortName)
-	}
-	if hasValue {
-		return value, true, 1
-	}
-
-	value, hasValue = command.GetSecondaryFlag(longName)
-	if !hasValue && shortName != "" {
-		value, hasValue = command.GetSecondaryFlag(shortName)
-	}
-	if hasValue {
-		return value, true, 2
-	}
-
-	return "", false, 0
-}
-
 // processGlobalFlags
 func processGlobalFlags(command *CControlCommand) {
-	_, hasJson, _ := getGlobalFlag(command, "json", "")
+	_, hasJson := command.GetGlobalFlag("json")
 	if hasJson {
 		FlagJson = true
 	}
 
-	configValue, hasConfig, _ := getGlobalFlag(command, "config", "C")
-	if hasConfig && configValue != "" {
-		FlagConfigFilePath = configValue
+	configFilePath, hasConfig := command.GetGlobalFlag("config")
+	if hasConfig {
+		FlagConfigFilePath = configFilePath
+	}
+
+	_, hasHelp := command.GetGlobalFlag("help")
+	if hasHelp {
+		showHelp()
+		os.Exit(0)
+	}
+
+	_, hasVersion := command.GetGlobalFlag("version")
+	if hasVersion {
+		fmt.Println(util.Version())
+		os.Exit(0)
 	}
 }
