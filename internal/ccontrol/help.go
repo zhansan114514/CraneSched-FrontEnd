@@ -70,9 +70,9 @@ COMMANDS:
     priority: New priority value
     timelimit: New time limit for the job
 
-  update partitionName=<partition> [accounts=<accounts>] [deniedaccounts=<accounts>]
+  update partitionName=<partition> [accounts=<accounts>|allowedaccounts=<accounts>] [deniedaccounts=<accounts>]
     Update partition attributes.
-    accounts: List of accounts allowed to use the partition
+    accounts/allowedaccounts: List of accounts allowed to use the partition
     deniedaccounts: List of accounts denied from using the partition
 
   hold <jobid> [timelimit=<duration>]
