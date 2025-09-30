@@ -122,6 +122,10 @@ func executeCommand(command *CControlCommand) int {
 		return executeHoldCommand(command)
 	case "release":
 		return executeReleaseCommand(command)
+	case "suspend":
+		return executeSuspendCommand(command)
+	case "resume":
+		return executeResumeCommand(command)
 	case "create":
 		return executeCreateCommand(command)
 	case "delete":
@@ -419,6 +423,36 @@ func executeReleaseCommand(command *CControlCommand) int {
 	err := HoldReleaseJobs(jobIds, false)
 	if err != nil {
 		log.Errorf("release jobs failed: %s", err)
+		return util.ErrorGeneric
+	}
+	return util.ErrorSuccess
+}
+
+func executeSuspendCommand(command *CControlCommand) int {
+	jobIds := command.GetID()
+	if jobIds == "" {
+		log.Debug("no job id specified")
+		return util.ErrorCmdArg
+	}
+
+	err := SuspendJobs(jobIds)
+	if err != nil {
+		log.Errorf("suspend jobs failed: %s", err)
+		return util.ErrorGeneric
+	}
+	return util.ErrorSuccess
+}
+
+func executeResumeCommand(command *CControlCommand) int {
+	jobIds := command.GetID()
+	if jobIds == "" {
+		log.Debug("no job id specified")
+		return util.ErrorCmdArg
+	}
+
+	err := ResumeJobs(jobIds)
+	if err != nil {
+		log.Errorf("resume jobs failed: %s", err)
 		return util.ErrorGeneric
 	}
 	return util.ErrorSuccess
