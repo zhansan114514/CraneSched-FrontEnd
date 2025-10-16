@@ -170,7 +170,7 @@ message TaskToCtld {
   bool exclusive = 37;
 
   bool hold = 38;
-  google.protobuf.Timestamp begin_time = 39; 
+  google.protobuf.Timestamp begin_time = 39;
 }
 
 message TaskInEmbeddedDb {
@@ -277,7 +277,7 @@ message InteractiveTaskAdditionalMeta {
   bool x11 = 6;
   X11Meta x11_meta = 7;
 
-  //Crun input will forward to these tasks
+  // Crun input will forward to these tasks
   optional uint32 input_task_id = 8;
 }
 
@@ -501,6 +501,8 @@ enum ErrCode {
   ERR_REVOKE_CERTIFICATE = 74;
 
   ERR_IDENTITY_MISMATCH = 75;
+  ERR_NOT_FORCE = 76;
+  ERR_INVALID_USERNAME = 77;
 }
 
 enum EntityType {
@@ -611,7 +613,7 @@ message CranedRemoteMeta {
   repeated uint32 lost_tasks = 6;
   repeated uint32 lost_jobs = 7;
   repeated NetworkInterface network_interfaces = 8;
-  uint32 config_crc= 9;
+  uint32 config_crc = 9;
 }
 
 enum TxnAction {

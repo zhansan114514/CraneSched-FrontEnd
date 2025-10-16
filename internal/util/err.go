@@ -22,34 +22,100 @@ import (
 	"CraneFrontEnd/generated/protos"
 	"errors"
 	"fmt"
-	"github.com/spf13/cobra"
 	"os"
+
+	"github.com/spf13/cobra"
 )
 
-type CraneCmdError = int
+type ExitCode = int
 
-// Do not use error code bigger than 127
-
-// general
+// Do not define error code > 127
 const (
-	ErrorSuccess       CraneCmdError = 0
-	ErrorGeneric       CraneCmdError = 1
-	ErrorCmdArg        CraneCmdError = 2
-	ErrorNetwork       CraneCmdError = 3
-	ErrorBackend       CraneCmdError = 4
-	ErrorInvalidFormat CraneCmdError = 5
-	ErrorSystem        CraneCmdError = 6
+	ErrorSuccess ExitCode = iota
+	ErrorGeneric
+	ErrorCmdArg
+	ErrorNetwork
+	ErrorBackend
+	ErrorInvalidFormat
+	ErrorSystem
 )
 
 type CraneError struct {
-	Code    CraneCmdError
+	Code    ExitCode
 	Message string
+	cause   error
 }
 
 func (e *CraneError) Error() string {
+	if e == nil {
+		return "<nil>"
+	}
 	return e.Message
 }
 
+func (e *CraneError) Unwrap() error {
+	return e.cause
+}
+
+func NewCraneErr(code ExitCode, message string) *CraneError {
+	return &CraneError{
+		Code:    code,
+		Message: message,
+	}
+}
+
+func WrapCraneErr(code ExitCode, format string, err error) *CraneError {
+	return &CraneError{
+		Code:    code,
+		Message: fmt.Sprintf(format, err),
+		cause:   err,
+	}
+}
+
+// Silence usage info output when RunE() returns a non-nil error
+func RunEWrapperForLeafCommand(cmd *cobra.Command) {
+	for _, c := range cmd.Commands() {
+		RunEWrapperForLeafCommand(c) // bfs
+	}
+
+	if len(cmd.Commands()) == 0 {
+		originalRunE := cmd.RunE
+		cmd.RunE = func(cmd *cobra.Command, args []string) error {
+			if originalRunE != nil {
+				err := originalRunE(cmd, args)
+				var craneErr *CraneError
+				if errors.As(err, &craneErr) {
+					if craneErr != nil {
+						if craneErr.Error() == "" {
+							cmd.SilenceErrors = true
+						}
+						if craneErr.Code != ErrorCmdArg {
+							cmd.SilenceUsage = true // Silence usage info output
+						}
+					}
+				}
+				return err
+			} else if cmd.Run != nil {
+				cmd.Run(cmd, args)
+			}
+			return nil
+		}
+	}
+}
+
+func RunAndHandleExit(cmd *cobra.Command) {
+	if err := cmd.Execute(); err != nil {
+		var craneErr *CraneError
+		if errors.As(err, &craneErr) {
+			os.Exit(craneErr.Code)
+		} else {
+			os.Exit(ErrorGeneric)
+		}
+	}
+	os.Exit(ErrorSuccess)
+}
+
+// gRPC errors
 var errMsgMap = map[protos.ErrCode]string{
 
 	// User-related errors
@@ -125,6 +191,8 @@ var errMsgMap = map[protos.ErrCode]string{
 	protos.ErrCode_ERR_DUPLICATE_CERTIFICATE:  "The certificate has already been issued to the user. If the certificate is lost and needs to be reissued, please contact the administrator for assistance",
 	protos.ErrCode_ERR_REVOKE_CERTIFICATE:     "Revocation of the certificate failed, Please check the logs",
 	protos.ErrCode_ERR_IDENTITY_MISMATCH:      "User information does not match, unable to submit the task.",
+	protos.ErrCode_ERR_NOT_FORCE:              "You need to set --force for this operation.",
+	protos.ErrCode_ERR_INVALID_USERNAME:       "Invalid username",
 }
 
 func ErrMsg(err_code protos.ErrCode) string {
@@ -132,47 +200,4 @@ func ErrMsg(err_code protos.ErrCode) string {
 		return msg
 	}
 	return fmt.Sprintf("Unknown Error Occurred: %s", err_code)
-}
-
-// Silence usage info output when RunE() returns a non-nil error
-func RunEWrapperForLeafCommand(cmd *cobra.Command) {
-	for _, c := range cmd.Commands() {
-		RunEWrapperForLeafCommand(c) // bfs
-	}
-
-	if len(cmd.Commands()) == 0 {
-		originalRunE := cmd.RunE
-		cmd.RunE = func(cmd *cobra.Command, args []string) error {
-			if originalRunE != nil {
-				err := originalRunE(cmd, args)
-				var craneErr *CraneError
-				if errors.As(err, &craneErr) {
-					if craneErr != nil {
-						if craneErr.Error() == "" {
-							cmd.SilenceErrors = true
-						}
-						if craneErr.Code != ErrorCmdArg {
-							cmd.SilenceUsage = true // Silence usage info output
-						}
-					}
-				}
-				return err
-			} else if cmd.Run != nil {
-				cmd.Run(cmd, args)
-			}
-			return nil
-		}
-	}
-}
-
-func RunAndHandleExit(cmd *cobra.Command) {
-	if err := cmd.Execute(); err != nil {
-		var craneErr *CraneError
-		if errors.As(err, &craneErr) {
-			os.Exit(craneErr.Code)
-		} else {
-			os.Exit(ErrorGeneric)
-		}
-	}
-	os.Exit(ErrorSuccess)
 }
