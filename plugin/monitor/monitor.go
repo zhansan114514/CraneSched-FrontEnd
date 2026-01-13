@@ -66,6 +66,7 @@ var _ api.NodeEventHooks = MonitorPlugin{}
 var _ api.GrpcServiceRegistrar = MonitorPlugin{}
 var _ api.HostConfigAware = MonitorPlugin{}
 var _ api.ResourceHooks = MonitorPlugin{}
+var _ api.TraceHooks = MonitorPlugin{}
 
 var PluginInstance = MonitorPlugin{}
 
@@ -210,6 +211,21 @@ func (p MonitorPlugin) UpdateLicensesHook(ctx *api.PluginContext) {
 
 	if err := db.GetInstance().SaveLicenseUsage(req.GetLicenseInfo()); err != nil {
 		log.Errorf("Failed to save license usage: %v", err)
+	}
+}
+
+func (p MonitorPlugin) InsertSpansHook(ctx *api.PluginContext) {
+	req, ok := ctx.Request().(*protos.InsertSpansHookRequest)
+	if !ok {
+		log.Error("Invalid request type, expected InsertSpansHookRequest")
+		return
+	}
+	recs := req.GetRecords()
+	if len(recs) == 0 {
+		return
+	}
+	if err := db.GetInstance().SaveSpanRecords(recs); err != nil {
+		log.Errorf("Failed to save span records: %v", err)
 	}
 }
 

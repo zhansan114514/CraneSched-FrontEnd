@@ -130,4 +130,18 @@ service CranePluginD {
   /* ----------------------------------- Called from Craned ---------------------------------------------------- */
   rpc CreateCgroupHook(CreateCgroupHookRequest) returns (CreateCgroupHookReply);
   rpc DestroyCgroupHook(DestroyCgroupHookRequest) returns (DestroyCgroupHookReply);
+
+  /* ----------------------------------- Spans ingestion (from Crane core) ------------------------------------- */
+  // Insert OpenTelemetry spans encoded as InfluxDB line protocol records.
+  rpc InsertSpansHook(InsertSpansHookRequest) returns (InsertSpansHookReply);
+}
+
+message InsertSpansHookRequest {
+  // Each element is a single InfluxDB line protocol record
+  repeated string records = 1;
+}
+
+message InsertSpansHookReply {
+  bool ok = 1;
+  string failure_reason = 2;
 }

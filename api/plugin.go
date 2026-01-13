@@ -32,6 +32,9 @@ const (
 	UpdatePowerStateHook
 	RegisterCranedHook
 	UpdateLicensesHook
+
+	// Insert spans encoded as InfluxDB line protocol.
+	InsertSpansHook
 )
 
 type PluginHandler func(*PluginContext)
@@ -109,4 +112,9 @@ type HostConfigAware interface {
 // ResourceHooks handles ctld virtual resource change
 type ResourceHooks interface {
 	UpdateLicensesHook(ctx *PluginContext)
+}
+
+// TraceHooks handles OpenTelemetry spans ingestion
+type TraceHooks interface {
+	InsertSpansHook(ctx *PluginContext)
 }

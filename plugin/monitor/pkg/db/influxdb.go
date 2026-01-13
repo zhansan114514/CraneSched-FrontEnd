@@ -315,6 +315,25 @@ func (db *InfluxDB) Close() error {
 	return nil
 }
 
+// SaveSpanRecords stores OpenTelemetry spans encoded as InfluxDB line protocol
+// into the cluster bucket, leveraging the same client and configs as other data.
+func (db *InfluxDB) SaveSpanRecords(records []string) error {
+	if len(records) == 0 {
+		return nil
+	}
+	writeAPI := db.client.WriteAPIBlocking(db.org, db.clusterBucket)
+	ctx := context.Background()
+	for _, rec := range records {
+		if strings.TrimSpace(rec) == "" {
+			continue
+		}
+		if err := writeAPI.WriteRecord(ctx, rec); err != nil {
+			return fmt.Errorf("failed to write span record: %v", err)
+		}
+	}
+	return nil
+}
+
 func (db *InfluxDB) createBucketIfNotExists(bucketName string) error {
 	ctx := context.Background()
 

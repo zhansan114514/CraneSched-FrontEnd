@@ -214,3 +214,21 @@ func (pd *PluginDaemon) UpdateLicensesHook(ctx context.Context, req *protos.Upda
 
 	return reply, nil
 }
+
+func (pd *PluginDaemon) InsertSpansHook(ctx context.Context, req *protos.InsertSpansHookRequest) (*protos.InsertSpansHookReply, error) {
+	log.Tracef("InsertSpansHook request received: %d records", len(req.GetRecords()))
+	reply := &protos.InsertSpansHookReply{}
+	hs := make([]api.PluginHandler, 0)
+
+	for _, p := range gPluginMap {
+		if handler, ok := p.Plugin.(api.TraceHooks); ok {
+			hs = append(hs, handler.InsertSpansHook)
+		}
+	}
+
+	c := api.NewContext(ctx, req, api.InsertSpansHook, &hs)
+	c.Start()
+
+	reply.Ok = true
+	return reply, nil
+}
