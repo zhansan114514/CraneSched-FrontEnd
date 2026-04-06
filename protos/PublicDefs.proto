@@ -244,6 +244,7 @@ message JobToCtld {
   // Job array spec for this submission (inclusive range).
   optional uint32 array_index_start = 53;
   optional uint32 array_index_end = 54;
+  optional uint32 array_index_stride = 56;
   // The concrete index of this task after expansion.
   optional uint32 array_task_id = 55;
 }
@@ -284,9 +285,6 @@ message RuntimeAttrOfJob {
   // For array parents: the first child's pre-allocated job_id.
   // Children IDs are sequential: first_child_job_id, first_child_job_id+1, ...
   optional uint32 first_child_job_id = 25;
-
-  // For array parents: whether the array has been expanded into children.
-  optional bool array_expanded = 26;
 }
 
 message StepToCtld {
@@ -333,8 +331,6 @@ message StepToCtld {
   optional double cpus_per_task = 37;
   optional uint64 mem_per_node = 38;
   optional DeviceMap gres_per_node = 39;
-
-  optional uint32 array_task_id = 40;
 }
 
 message RuntimeAttrOfStep {
@@ -636,8 +632,7 @@ message JobInfo {
   uint32 ntasks = 44;
 
   // Array metadata for query/display.
-  optional uint32 array_index_start = 45;
-  optional uint32 array_index_end = 46;
+  // For array children: the specific task index.
   optional uint32 array_task_id = 47;
 
   // For array children: parent job's job_id.
